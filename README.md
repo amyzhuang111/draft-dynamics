@@ -31,6 +31,14 @@ python3 -m http.server 8000
 # http://localhost:8000
 ```
 
+Tests (no dependencies; parses A, B and x0 out of `index.html`, recomputes the
+41-step trajectory for the default u and all four presets, checks bounds,
+fixed-point convergence, rho(A) < 1, and the displayed eigenvalue string):
+
+```bash
+npm test
+```
+
 ## Math sanity (verified 2026-10-19, America/New_York)
 
 Parsed A and B directly out of `index.html` and recomputed in Python/NumPy:
