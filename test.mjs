@@ -146,6 +146,31 @@ pageEig.forEach((v, i) => assert(Math.abs(v - eig[i]) <= 1e-3, `eigenvalue ${i}:
 assert(displayed === `eigenvalues λ(A) = ${eig.map(v => fmt3(v)).join(", ")}  ·  spectral radius ρ(A)=${fmt3(rhoJacobi)}`,
   "page displayed eigenvalue string matches test-computed values (3-decimal display tolerance)");
 
+
+// ---------- 5. Fonts local + wording positions + readout precision ----------
+section("self-hosted fonts, disclaimer wording, readout precision");
+{
+  const fs = await import("node:fs");
+  assert(!/fonts\.googleapis|fonts\.gstatic/.test(html), "no Google Fonts CDN references in index.html");
+  const urls = [...html.matchAll(/url\((fonts\/[^)]+\.woff2)\)/g)].map(m => m[1]);
+  assert(urls.length >= 6, `@font-face uses local fonts/ woff2 files (found ${urls.length})`);
+  urls.forEach(u => assert(fs.existsSync(new URL(u, import.meta.url)) && fs.statSync(new URL(u, import.meta.url)).size > 10000, `font file exists: ${u}`));
+  assert(/Georgia,serif/.test(html), "system serif fallback kept");
+  const eqPos = html.indexOf('id="eqh"');
+  const disc = html.indexOf('class="disclaimer"');
+  const foot = html.indexOf('<footer>');
+  assert(disc < eqPos && html.slice(disc, disc + 200).includes("equations below"), "disclaimer (before equations) says 'equations below'");
+  assert(foot > eqPos && html.slice(foot, foot + 200).includes("equations above"), "footer (after equations) says 'equations above'");
+  assert(/<meta name="description" content="[^"]*equations on this page/.test(html), "meta description says 'equations on this page'");
+  assert(!html.slice(0, eqPos).includes("equations above"), "no 'equations above' anywhere before the equations");
+  const readme = fs.readFileSync(new URL("README.md", import.meta.url), "utf8");
+  const d = (() => { const xs = trajectory(defaultU); const xS = fixedPoint(defaultU); return Math.hypot(...xs[STEPS].map((v, i) => v - xS[i])); })();
+  const pageShows = Number(d.toPrecision(3)).toString();
+  console.log(`page dist readout: ${pageShows}`);
+  assert(html.includes("Number(dist.toPrecision(3))"), "page formats distance to 3 significant figures");
+  assert(readme.includes(`≈ ${pageShows}`), `README quotes the exact page readout ${pageShows}`);
+}
+
 // ---------- Summary ----------
 console.log(`\n${passed} assertions passed, ${failures.length} failed`);
 if (failures.length) { console.error("Failures:\n - " + failures.join("\n - ")); process.exit(1); }

@@ -44,10 +44,13 @@ npm test
 Parsed A and B directly out of `index.html` and recomputed in Python/NumPy:
 
 - Eigenvalues λ(A) ≈ [0.834, 0.677, 0.621, 0.588]; spectral radius ρ(A) ≈ 0.834 < 1 → the unclipped map is stable / contracting.
-- Default u = [0.45, 0.35, 0.50, 0.30]: x40 ≈ [0.8091, 0.6536, 0.7461, 0.4428]; x* ≈ [0.8093, 0.6538, 0.7463, 0.4429]; ‖x40 − x*‖₂ ≈ 0.0004.
+- Default u = [0.45, 0.35, 0.50, 0.30]: x40 ≈ [0.8091, 0.6536, 0.7461, 0.4428]; x* ≈ [0.8093, 0.6538, 0.7463, 0.4429]; ‖x40 − x*‖₂ ≈ 0.000365 (page shows 3 significant figures).
 - All 41 states stay inside [0,1]^4 for the default and all four presets (no clip-boundary hits); every preset fixed point lies inside [0,1]^4.
 - Preset x40: Add a source [0.7036, 0.9276, 0.5221, 0.5894] · Cut a paragraph [0.7221, 0.2932, 0.6408, 0.1438] · Rewrite intro [0.9413, 0.6287, 0.9936, 0.5635] · Polish pass [0.7040, 0.4004, 0.6535, 0.1244].
 
 ## Tech
 
 Single static `index.html` (inline CSS/JS, Google Fonts). No external data, no tracking.
+
+## Fonts
+Playfair Display, EB Garamond, Inter and JetBrains Mono (SIL Open Font License, via Google Fonts) are self-hosted in `fonts/` (latin subset, woff2); no font CDN is contacted. Fallbacks: Georgia/serif, system-ui, monospace.
