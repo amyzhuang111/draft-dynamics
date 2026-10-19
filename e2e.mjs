@@ -6,9 +6,10 @@ import { extname, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import puppeteer from "puppeteer-core";
 import * as M from "./model.js";
+import { execFileSync } from "node:child_process";
 
 const root = dirname(fileURLToPath(import.meta.url));
-const types = { ".html": "text/html", ".js": "text/javascript", ".woff2": "font/woff2" };
+const types = { ".html": "text/html", ".js": "text/javascript", ".woff2": "font/woff2", ".ttf": "font/ttf" };
 const server = http.createServer(async (req, res) => {
   try { const p = join(root, decodeURIComponent(req.url.split("?")[0]) === "/" ? "index.html" : decodeURIComponent(req.url.split("?")[0]));
     const body = await readFile(p); res.writeHead(200, { "content-type": types[extname(p)] || "application/octet-stream" }); res.end(body); }
@@ -87,6 +88,37 @@ m.rows.forEach((r, k) => assert(r <= m.lines[k] + 1, `390px: matrix ${k} rows re
 
 assert(errors.length === 0, `no console/page errors (${errors.join(" | ")})`);
 assert(failedReq.length === 0, `no failed or external requests (${failedReq.join(" | ")})`);
+
+// ---- fonts: every rendered (family, weight, style) has a real @font-face covering it (no faux bold/italic),
+// the face loaded, and the face file's cmap contains every character rendered in it.
+{
+  const fp = await browser.newPage(); await fp.setViewport({ width: 1600, height: 1000 });
+  await fp.goto(BASE + "/", { waitUntil: "networkidle0" }); await fp.evaluate(() => document.fonts.ready);
+  const r = await fp.evaluate(() => {
+    const used = {}; const tw = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT); let n;
+    while ((n = tw.nextNode())) { const e = n.parentElement; if (!e || !n.textContent.trim() || e.closest("script,style")) continue;
+      const cs = getComputedStyle(e); const fam = (e.getAttribute("font-family") || cs.fontFamily).split(",")[0].replace(/["']/g, "").trim();
+      const k = `${fam}|${cs.fontWeight}|${cs.fontStyle}`; used[k] = (used[k] || "") + n.textContent; }
+    const faces = [...document.fonts].map(f => ({ family: f.family.replace(/["']/g, ""), style: f.style, weight: f.weight, status: f.status }));
+    const srcs = [...document.styleSheets].flatMap(ss => [...ss.cssRules]).filter(r => r instanceof CSSFontFaceRule).map(r => ({ family: r.style.getPropertyValue("font-family").replace(/["']/g, "").trim(), style: r.style.getPropertyValue("font-style"), src: (r.style.getPropertyValue("src").match(/url\("?([^")]+)"?\)/) || [])[1] }));
+    return { used: Object.fromEntries(Object.entries(used).map(([k, v]) => [k, [...new Set(v)].join("")])), faces, srcs };
+  });
+  const KNOWN_FALLBACK = new Set(["∈"]); // not in EB Garamond / Inter / Playfair; renders from the system fallback font
+  const glyphReq = {};
+  for (const [k, chars] of Object.entries(r.used)) {
+    const [fam, w, st] = k.split("|"); const wt = +w;
+    const face = r.faces.find(f => f.family === fam && f.style === st && (() => { const [a, b = a] = f.weight.split(" ").map(Number); return wt >= a && wt <= b; })());
+    console.log(`font: ${fam} ${wt} ${st} -> face ${face ? face.weight + ' ' + face.status : 'NONE'}`);
+    assert(!!face && face.status === "loaded", `real face for ${fam} ${wt} ${st} (${face ? face.weight + " " + face.status : "NONE -> synthesized"})`);
+    const src = r.srcs.find(x => x.family === fam && x.style === st)?.src;
+    if (src) (glyphReq[src] ||= { fam, chars: "" }).chars += chars;
+  }
+  const py = "import json,sys\nfrom fontTools.ttLib import TTFont\nreq=json.loads(sys.argv[1]);print(json.dumps({f:[c for c in set(v['chars']) if c.strip() and ord(c) not in TTFont(sys.argv[2]+'/'+f).getBestCmap()] for f,v in req.items()}))";
+  const miss = JSON.parse(execFileSync("python3", ["-c", py, JSON.stringify(glyphReq), root]).toString());
+  for (const [f, m] of Object.entries(miss)) { console.log(`glyphs: ${f} missing ${m.join('') || 'none'}`); const bad = m.filter(c => !KNOWN_FALLBACK.has(c)); assert(bad.length === 0, `${f} covers every char rendered in ${glyphReq[f].fam}${m.length ? " (system fallback: " + m.join("") + ")" : ""}${bad.length ? " MISSING " + bad.join("") : ""}`); }
+  const pf = r.used["Playfair Display|700|normal"]; assert(!!pf && r.faces.some(f => f.family === "Playfair Display" && f.weight === "400 900"), "h1 Playfair Display 700 served by variable 400–900 face (no faux bold)");
+  await fp.close();
+}
 await browser.close(); server.close();
 console.log(`\nE2E: ${passed} assertions passed, ${failures.length} failed`);
 if (failures.length) process.exit(1);

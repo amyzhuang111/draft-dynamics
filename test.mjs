@@ -120,8 +120,8 @@ section("self-hosted fonts, OFL, disclaimer wording, readout precision, matrix l
   const fs = await import("node:fs");
   const f = n => new URL(n, import.meta.url);
   assert(!/fonts\.googleapis|fonts\.gstatic/.test(html), "no Google Fonts CDN references in index.html");
-  const urls = [...html.matchAll(/url\((fonts\/[^)]+\.woff2)\)/g)].map(m => m[1]);
-  assert(urls.length >= 6, `@font-face uses local fonts/ woff2 files (found ${urls.length})`);
+  const urls = [...html.matchAll(/url\("?(fonts\/[^)"]+\.(?:woff2|ttf))"?\)/g)].map(m => m[1]);
+  assert(urls.length >= 6, `@font-face uses local fonts/ files (found ${urls.length})`);
   urls.forEach(u => assert(fs.existsSync(f(u)) && fs.statSync(f(u)).size > 10000, `font file exists: ${u}`));
   ["PlayfairDisplay","EBGaramond","Inter","JetBrainsMono"].forEach(n => assert(fs.existsSync(f(`fonts/OFL-${n}.txt`)) && fs.readFileSync(f(`fonts/OFL-${n}.txt`), "utf8").includes("SIL OPEN FONT LICENSE"), `OFL text bundled: fonts/OFL-${n}.txt`));
   assert(/Georgia,serif/.test(html), "system serif fallback kept");
