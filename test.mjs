@@ -138,6 +138,46 @@ section("self-hosted fonts, OFL, disclaimer wording, readout precision, matrix l
   assert(/\#matA,\#matB\{white-space:pre;/.test(html), "matrices use no-wrap + horizontal scroll container");
 }
 
+
+// ---------- 6. Independent trajectory oracles (no model.js functions used) ----------
+section("independent trajectory: Float64Array loop + closed form A^40");
+{
+  const n = 4;
+  // Oracle 1: separately written float64 loop with explicit indices and a clip counter.
+  function oracleLoop(u) {
+    const Bu = new Float64Array(n);
+    for (let i = 0; i < n; i++) { let s = 0; for (let j = 0; j < n; j++) s += B[i][j] * u[j]; Bu[i] = s; }
+    let x = Float64Array.from(X0), clips = 0;
+    for (let t = 0; t < STEPS; t++) {
+      const y = new Float64Array(n);
+      for (let i = 0; i < n; i++) { let s = Bu[i]; for (let j = 0; j < n; j++) s += A[i][j] * x[j]; if (s < 0 || s > 1) clips++; y[i] = s < 0 ? 0 : s > 1 ? 1 : s; }
+      x = y;
+    }
+    return { x40: [...x], clips, Bu: [...Bu] };
+  }
+  // Oracle 2: closed form x40 = A^40 (x0 - x*) + x*, x* by Cramer-free Gauss-Seidel on (I-A)x = Bu; valid only when no clipping occurred.
+  const mm = (P, Q) => P.map((r, i) => Q[0].map((_, j) => r.reduce((s, _, k) => s + P[i][k] * Q[k][j], 0)));
+  function matPow(Mx, e) { let R = Mx.map((r, i) => r.map((_, j) => +(i === j))), Bm = Mx; while (e) { if (e & 1) R = mm(R, Bm); Bm = mm(Bm, Bm); e >>= 1; } return R; }
+  function gaussSeidel(Bu) { const x = new Array(n).fill(0); for (let it = 0; it < 2000; it++) for (let i = 0; i < n; i++) { let s = Bu[i]; for (let j = 0; j < n; j++) if (j !== i) s += A[i][j] * x[j]; x[i] = s / (1 - A[i][i]); } return x; }
+  const A40 = matPow(A, STEPS);
+  for (const [name, u] of [["default", defaultU], ...Object.entries(PRESETS)]) {
+    const o = oracleLoop(u), page = trajectory(u)[STEPS], pageStar = fixedPoint(u);
+    const maxDiff = Math.max(...o.x40.map((v, i) => Math.abs(v - page[i])));
+    assert(maxDiff < 1e-12, `${name}: model x40 == independent float64 loop (max diff ${maxDiff.toExponential(2)})`);
+    const star = gaussSeidel(o.Bu);
+    assert(Math.max(...star.map((v, i) => Math.abs(v - pageStar[i]))) < 1e-12, `${name}: model x* == Gauss-Seidel x*`);
+    const dOracle = Math.hypot(...o.x40.map((v, i) => v - star[i]));
+    assert(Math.abs(dOracle - M.distance(u)) < 1e-12 && M.fmtDist(dOracle) === M.fmtDist(M.distance(u)), `${name}: distance ${M.fmtDist(dOracle)} independent == model`);
+    if (o.clips === 0) {
+      const dx = X0.map((v, i) => v - star[i]);
+      const cf = A40.map((r, i) => r.reduce((s, a, j) => s + a * dx[j], 0) + star[i]);
+      const cfDiff = Math.max(...cf.map((v, i) => Math.abs(v - page[i])));
+      assert(cfDiff < 1e-10, `${name}: no clipping, closed form A^40(x0-x*)+x* == model x40 (max diff ${cfDiff.toExponential(2)})`);
+    } else console.log(`${name}: ${o.clips} clip events, closed form not applicable`);
+    if (name === "default") { assert(o.clips === 0, "default run never clips"); assert(M.fmtDist(dOracle) === "0.000365", `independent default distance = 0.000365`); }
+  }
+}
+
 // ---------- Summary ----------
 console.log(`\n${passed} assertions passed, ${failures.length} failed`);
 if (failures.length) { console.error("Failures:\n - " + failures.join("\n - ")); process.exit(1); }

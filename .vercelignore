@@ -1,0 +1,8 @@
+test.mjs
+e2e.mjs
+package.json
+package-lock.json
+node_modules
+.env*
+README.md
+.gitignore

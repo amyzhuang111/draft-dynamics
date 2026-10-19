@@ -15,6 +15,9 @@ const server = http.createServer(async (req, res) => {
   catch { res.writeHead(404); res.end(); }
 }).listen(0);
 const port = server.address().port;
+const BASE = (process.env.BASE_URL || `http://localhost:${port}`).replace(/\/$/, "");
+const host = new URL(BASE).origin;
+console.log(`E2E target: ${BASE}`);
 
 let passed = 0; const failures = [];
 const assert = (c, m) => { if (c) passed++; else { failures.push(m); console.error("FAIL:", m); } };
@@ -30,9 +33,9 @@ page.on("console", m => { if (m.type() === "error") errors.push(m.text()); });
 page.on("pageerror", e => errors.push(String(e)));
 page.on("requestfailed", r => failedReq.push(r.url()));
 page.on("response", r => { if (r.status() >= 400) failedReq.push(`${r.status()} ${r.url()}`); });
-page.on("request", r => { if (!r.url().startsWith(`http://localhost:${port}`) && !r.url().startsWith("data:")) failedReq.push("external:" + r.url()); });
+page.on("request", r => { if (!r.url().startsWith(host) && !r.url().startsWith("data:")) failedReq.push("external:" + r.url()); });
 await page.setViewport({ width: 1600, height: 1000 });
-await page.goto(`http://localhost:${port}/`, { waitUntil: "networkidle0" });
+await page.goto(`${BASE}/`, { waitUntil: "networkidle0" });
 await page.evaluate(() => document.fonts.ready);
 
 const read = () => page.evaluate(() => ({ dist: document.getElementById("dist").textContent, xread: document.getElementById("xread").innerText, eig: document.getElementById("eig").textContent, o: [0,1,2,3].map(i => document.getElementById("o" + i).textContent), traces: document.querySelectorAll("#traces .trace").length, circles: document.querySelectorAll("#portrait circle").length }));
@@ -77,6 +80,8 @@ const m = await page.evaluate(() => ({ docW: document.documentElement.scrollWidt
 const clipped = await page.evaluate(() => [...document.querySelectorAll(".matrix")].filter(el => el.scrollWidth > el.clientWidth + 1).map(el => el.id || "equations"));
 console.log(`390px horizontally scrollable blocks: ${clipped.join(",") || "none"}`);
 assert(!clipped.includes("equations"), "390px: equations text wraps, not clipped");
+assert(!clipped.includes("matA") && !clipped.includes("matB"), "390px: A/B matrices fit without horizontal scrolling");
+console.log(`390px matrix font-size: ${await page.$eval("#matA", el => getComputedStyle(el).fontSize)}`);
 assert(m.docW <= 390, `390px: no page-level horizontal overflow (scrollWidth ${m.docW})`);
 m.rows.forEach((r, k) => assert(r <= m.lines[k] + 1, `390px: matrix ${k} rows rendered ${r} <= text lines ${m.lines[k]} (no wrap)`));
 
