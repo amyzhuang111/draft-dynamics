@@ -1,7 +1,7 @@
 // Draft Dynamics — in-repo test harness. No dependencies (Node >= 18).
-// Parses A, B, x0, default u, presets and STEPS out of index.html itself
-// (never copies of the numbers), recomputes the 41-step trajectory for the
-// default u and all 4 presets, and checks:
+// Imports the page's own model (model.js, the same module index.html imports;
+// no duplicate copy), runs the 41-step trajectory for the default u and all
+// 4 presets, and checks:
 //   1. every state stays in [0,1]^4
 //   2. fixed-point convergence for default u: ||x40 - x*||2 < 0.01
 //   3. rho(A) < 1, via this file's own Jacobi eigensolver + power iteration
@@ -22,23 +22,13 @@ function assert(cond, msg) {
 }
 function section(name) { console.log(`\n== ${name}`); }
 
-// ---------- Parse the model out of index.html ----------
-function parseJsonConst(re, label) {
-  const m = html.match(re);
-  assert(m !== null, `parsed ${label} out of index.html`);
-  if (!m) throw new Error(`cannot parse ${label}`);
-  return JSON.parse(m[1]);
-}
-const A = parseJsonConst(/const A\s*=\s*(\[\[[\s\S]*?\]\]);/, "A");
-const B = parseJsonConst(/const B\s*=\s*(\[\[[\s\S]*?\]\]);/, "B");
-const X0 = parseJsonConst(/const X0\s*=\s*(\[[^\]]*\])\s*,\s*STEPS/, "x0");
-const defaultU = parseJsonConst(/let u\s*=\s*(\[[^\]]*\]);/, "default u");
-const PRESETS = parseJsonConst(/const PRESETS\s*=\s*(\{[\s\S]*?\});/, "PRESETS");
-const stepsMatch = html.match(/STEPS\s*=\s*(\d+)/);
-assert(stepsMatch !== null, "parsed STEPS out of index.html");
-const STEPS = Number(stepsMatch[1]);
+// ---------- The page's own model (single shared module, no copy) ----------
+import * as M from "./model.js";
+const { A, B, X0, STEPS, PRESETS, DEFAULT_U: defaultU, trajectory, fixedPoint, eigenvaluesSym, matVec } = M;
+assert(/import \{[^}]*\} from '\.\/model\.js'/.test(html), "index.html imports its model from ./model.js");
+assert(!/const A\s*=\s*\[\[/.test(html) && !/function trajectory/.test(html), "index.html contains no duplicate copy of the model");
 
-section("parsed model");
+section("shared model");
 console.log(`A=${JSON.stringify(A)}`);
 console.log(`B=${JSON.stringify(B)}`);
 console.log(`x0=${JSON.stringify(X0)} default u=${JSON.stringify(defaultU)} STEPS=${STEPS}`);
@@ -47,28 +37,9 @@ assert(A.length === 4 && A.every(r => r.length === 4), "A is 4x4");
 assert(B.length === 4 && B.every(r => r.length === 4), "B is 4x4");
 assert(X0.length === 4 && defaultU.length === 4, "x0 and default u are 4-vectors");
 assert(STEPS === 40, "STEPS is 40 (41 states)");
-assert(Object.keys(PRESETS).length === 4, "exactly 4 presets parsed");
+assert(Object.keys(PRESETS).length === 4, "exactly 4 presets");
 
-// ---------- Independent math (written for this test, not copied) ----------
-const clip = v => Math.max(0, Math.min(1, v));
-const matVec = (M, v) => M.map(r => r.reduce((s, x, i) => s + x * v[i], 0));
-function solve(M, b) { // Gaussian elimination with partial pivoting
-  const n = b.length, a = M.map((r, i) => [...r, b[i]]);
-  for (let c = 0; c < n; c++) {
-    let p = c; for (let r = c + 1; r < n; r++) if (Math.abs(a[r][c]) > Math.abs(a[p][c])) p = r;
-    [a[c], a[p]] = [a[p], a[c]];
-    const d = a[c][c];
-    for (let j = c; j <= n; j++) a[c][j] /= d;
-    for (let r = 0; r < n; r++) { if (r === c) continue; const f = a[r][c]; for (let j = c; j <= n; j++) a[r][j] -= f * a[c][j]; }
-  }
-  return a.map(r => r[n]);
-}
-const fixedPoint = u => solve(A.map((r, i) => r.map((v, j) => (i === j ? 1 : 0) - v)), matVec(B, u));
-function trajectory(u) {
-  const xs = [[...X0]], Bu = matVec(B, u);
-  for (let t = 0; t < STEPS; t++) xs.push(matVec(A, xs[t]).map((v, i) => clip(v + Bu[i])));
-  return xs;
-}
+// ---------- Independent oracle for eigenvalues (different algorithms from the page's) ----------
 // Own eigenvalue computation #1: classic cyclic Jacobi rotations.
 function jacobiEigenvalues(M) {
   const n = M.length, a = M.map(r => [...r]);
@@ -128,17 +99,13 @@ assert(Math.abs(rhoPower - rhoJacobi) < 1e-6, `power iteration agrees with Jacob
 
 // ---------- 4. Page's displayed eigenvalue string ----------
 section("page displayed eigenvalue string");
-assert(html.includes("eigenvalues λ(A) ="), "page contains the eigenvalue display line template");
-assert(html.includes("spectral radius ρ(A)="), "page contains the spectral-radius display template");
-// Run the page's own eigenvaluesSym (extracted verbatim from index.html).
-const fnStart = html.indexOf("function eigenvaluesSym");
-const fnEnd = html.indexOf("function matrixText");
-assert(fnStart >= 0 && fnEnd > fnStart, "extracted page eigenvaluesSym function from index.html");
-const pageEigenvaluesSym = new Function(`${html.slice(fnStart, fnEnd)}; return eigenvaluesSym;`)();
-const pageEig = pageEigenvaluesSym(A);
+assert(html.includes("eigString()"), "page renders the model eigString()");
+
+const pageEig = eigenvaluesSym(A);
 const pageRho = Math.max(...pageEig.map(Math.abs));
 const fmt3 = v => v.toFixed(3);
-const displayed = `eigenvalues λ(A) = ${pageEig.map(v => fmt3(v)).join(", ")}  ·  spectral radius ρ(A)=${fmt3(pageRho)}`;
+const displayed0 = `eigenvalues λ(A) = ${pageEig.map(v => fmt3(v)).join(", ")}  ·  spectral radius ρ(A)=${fmt3(pageRho)}`;
+const displayed = M.eigString().split(" < 1")[0].split(" ≥ 1")[0];
 console.log(`page would display: ${displayed}`);
 console.log(`test computed     : eigenvalues λ(A) = ${eig.map(v => fmt3(v)).join(", ")}  ·  spectral radius ρ(A)=${fmt3(rhoJacobi)}`);
 assert(pageEig.length === eig.length, "page and test both produce 4 eigenvalues");
@@ -147,28 +114,28 @@ assert(displayed === `eigenvalues λ(A) = ${eig.map(v => fmt3(v)).join(", ")}  �
   "page displayed eigenvalue string matches test-computed values (3-decimal display tolerance)");
 
 
-// ---------- 5. Fonts local + wording positions + readout precision ----------
-section("self-hosted fonts, disclaimer wording, readout precision");
+// ---------- 5. Fonts local + wording positions + readout precision + OFL ----------
+section("self-hosted fonts, OFL, disclaimer wording, readout precision, matrix layout");
 {
   const fs = await import("node:fs");
+  const f = n => new URL(n, import.meta.url);
   assert(!/fonts\.googleapis|fonts\.gstatic/.test(html), "no Google Fonts CDN references in index.html");
   const urls = [...html.matchAll(/url\((fonts\/[^)]+\.woff2)\)/g)].map(m => m[1]);
   assert(urls.length >= 6, `@font-face uses local fonts/ woff2 files (found ${urls.length})`);
-  urls.forEach(u => assert(fs.existsSync(new URL(u, import.meta.url)) && fs.statSync(new URL(u, import.meta.url)).size > 10000, `font file exists: ${u}`));
+  urls.forEach(u => assert(fs.existsSync(f(u)) && fs.statSync(f(u)).size > 10000, `font file exists: ${u}`));
+  ["PlayfairDisplay","EBGaramond","Inter","JetBrainsMono"].forEach(n => assert(fs.existsSync(f(`fonts/OFL-${n}.txt`)) && fs.readFileSync(f(`fonts/OFL-${n}.txt`), "utf8").includes("SIL OPEN FONT LICENSE"), `OFL text bundled: fonts/OFL-${n}.txt`));
   assert(/Georgia,serif/.test(html), "system serif fallback kept");
-  const eqPos = html.indexOf('id="eqh"');
-  const disc = html.indexOf('class="disclaimer"');
-  const foot = html.indexOf('<footer>');
+  const eqPos = html.indexOf('id="eqh"'), disc = html.indexOf('class="disclaimer"'), foot = html.indexOf('<footer>');
   assert(disc < eqPos && html.slice(disc, disc + 200).includes("equations below"), "disclaimer (before equations) says 'equations below'");
   assert(foot > eqPos && html.slice(foot, foot + 200).includes("equations above"), "footer (after equations) says 'equations above'");
   assert(/<meta name="description" content="[^"]*equations on this page/.test(html), "meta description says 'equations on this page'");
   assert(!html.slice(0, eqPos).includes("equations above"), "no 'equations above' anywhere before the equations");
-  const readme = fs.readFileSync(new URL("README.md", import.meta.url), "utf8");
-  const d = (() => { const xs = trajectory(defaultU); const xS = fixedPoint(defaultU); return Math.hypot(...xs[STEPS].map((v, i) => v - xS[i])); })();
-  const pageShows = Number(d.toPrecision(3)).toString();
+  const readme = fs.readFileSync(f("README.md"), "utf8");
+  const pageShows = M.fmtDist(M.distance(defaultU));
   console.log(`page dist readout: ${pageShows}`);
-  assert(html.includes("Number(dist.toPrecision(3))"), "page formats distance to 3 significant figures");
+  assert(html.includes("fmtDist(distance(u))") && pageShows === "0.000365", `page readout = model fmtDist (3 s.f.) = ${pageShows}`);
   assert(readme.includes(`≈ ${pageShows}`), `README quotes the exact page readout ${pageShows}`);
+  assert(/\#matA,\#matB\{white-space:pre;/.test(html), "matrices use no-wrap + horizontal scroll container");
 }
 
 // ---------- Summary ----------

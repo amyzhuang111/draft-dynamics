@@ -2,7 +2,11 @@
   "name": "draft-dynamics",
   "private": true,
   "version": "1.0.0",
+  "type": "module",
   "scripts": {
-    "test": "node test.mjs"
+    "test": "node test.mjs && node e2e.mjs"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^23.11.1"
   }
 }

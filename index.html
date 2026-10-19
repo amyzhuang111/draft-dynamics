@@ -2,6 +2,7 @@
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Draft Dynamics — A State-Space Portrait of a Writing Task</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Ccircle cx=%278%27 cy=%278%27 r=%276%27 fill=%27%239b84c2%27/%3E%3C/svg%3E">
 <meta name="description" content="A deterministic toy model. Numbers come from the equations on this page, not from measured writing.">
 <style>
 @font-face {
@@ -99,7 +100,10 @@ h1{font-family:"Playfair Display",Georgia,serif;font-weight:700;font-size:clamp(
 .panel h2{font-family:"Playfair Display",Georgia,serif;font-size:28px;margin:0 0 6px}
 .serif{font-family:"EB Garamond",Georgia,serif;font-size:19px;line-height:1.45}
 .mono{font-family:"JetBrains Mono",monospace;font-size:13px;line-height:1.6}
-.matrix{font-family:"EB Garamond",Georgia,serif;font-size:17px;line-height:1.35;white-space:pre-wrap;overflow-x:auto}
+.matrix{font-family:"EB Garamond",Georgia,serif;font-size:17px;line-height:1.35;white-space:pre-wrap;overflow-x:auto;max-width:100%}
+#matA,#matB{white-space:pre;-webkit-overflow-scrolling:touch}
+.mats{grid-template-columns:1fr 1fr}.mats>div{min-width:0}
+@media(max-width:520px){.mats{grid-template-columns:1fr}.matrix{font-size:15px}}
 svg{width:100%;height:auto;display:block}
 .controls{display:grid;gap:16px}
 .slider-row label{display:flex;justify-content:space-between;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#5b534c;margin-bottom:7px}
@@ -135,7 +139,7 @@ x<sub>t+1</sub> = clip₀¹ ( A x<sub>t</sub> + B u )        seeded at  x₀ = [
 For constant u, the (unclipped) fixed point is  x* = (I − A)⁻¹ B u .
 The star on the portrait is that x*, drawn only when it lies in [0,1]⁴;
 the shaded corner is the publishable region (coherence ≥ 0.65, evidence ≥ 0.55) in this toy.</p>
-<div class="grid" style="grid-template-columns:1fr 1fr;gap:18px">
+<div class="grid mats" style="gap:18px">
 <div><div class="label">A — how a draft carries itself</div><div class="matrix" id="matA"></div></div>
 <div><div class="label">B — what each move does</div><div class="matrix" id="matB"></div></div>
 </div>
@@ -172,25 +176,11 @@ the shaded corner is the publishable region (coherence ≥ 0.65, evidence ≥ 0.
 <footer>A deterministic toy model. Numbers come from the equations above, not from measured writing. No external data, no tracking. The fixed point, eigenvalues, trajectory and distances on this page are all computed live in your browser from the printed A and B. Stability note: A is symmetric and diagonally dominant; if every |λ| &lt; 1, the unclipped linear map contracts toward x* — clipping keeps the displayed orbit inside the unit square.</footer>
 </main>
 
-<script>
-const A=[[0.70,0.08,0.06,0.04],[0.08,0.66,0.03,0.05],[0.06,0.03,0.72,0.03],[0.04,0.05,0.03,0.64]];
-const B=[[0.04,0.12,0.10,0.06],[0.22,-0.02,0.03,0.02],[0.01,0.08,0.16,0.05],[0.12,-0.04,0.10,-0.06]];
-const X0=[0.32,0.18,0.55,0.80], STEPS=40;
-const NAMES=["coherence","evidence","voice","openness"], MOVES=["Research","Cut","Rewrite","Polish"];
-const PRESETS={"Add a source":[0.95,0.15,0.20,0.10],"Cut a paragraph":[0.10,0.90,0.25,0.20],"Rewrite intro":[0.25,0.30,0.95,0.15],"Polish pass":[0.15,0.35,0.30,0.95]};
-let u=[0.45,0.35,0.50,0.30];
-const clip=v=>Math.max(0,Math.min(1,v));
-const matVec=(M,v)=>M.map(r=>r.reduce((s,x,i)=>s+x*v[i],0));
-const fmt=(v,d=2)=>v.toFixed(d);
-function solve(M,b){const n=b.length,a=M.map((r,i)=>[...r,b[i]]);for(let c=0;c<n;c++){let p=c;for(let r=c+1;r<n;r++)if(Math.abs(a[r][c])>Math.abs(a[p][c]))p=r;[a[c],a[p]]=[a[p],a[c]];const d=a[c][c];for(let j=c;j<=n;j++)a[c][j]/=d;for(let r=0;r<n;r++){if(r===c)continue;const f=a[r][c];for(let j=c;j<=n;j++)a[r][j]-=f*a[c][j];}}return a.map(r=>r[n]);}
-function fixedPoint(u){const Bu=matVec(B,u);const IminusA=A.map((r,i)=>r.map((v,j)=>(i===j?1:0)-v));return solve(IminusA,Bu);}
-function trajectory(u){const xs=[[...X0]];for(let t=0;t<STEPS;t++){const nxt=matVec(A,xs[t]).map((v,i)=>clip(v+matVec(B,u)[i]));xs.push(nxt);}return xs;}
-function eigenvaluesSym(M){let a=M.map(r=>[...r]);for(let s=0;s<100;s++){let off=0;for(let i=0;i<4;i++)for(let j=i+1;j<4;j++)off+=a[i][j]*a[i][j];if(off<1e-12)break;for(let p=0;p<3;p++)for(let q=p+1;q<4;q++){if(Math.abs(a[p][q])<1e-12)continue;const th=0.5*Math.atan2(2*a[p][q],a[q][q]-a[p][p]),c=Math.cos(th),sn=Math.sin(th);for(let k=0;k<4;k++){const akp=a[k][p],akq=a[k][q];a[k][p]=c*akp-sn*akq;a[k][q]=sn*akp+c*akq;}for(let k=0;k<4;k++){const apk=a[p][k],aqk=a[q][k];a[p][k]=c*apk-sn*aqk;a[q][k]=sn*apk+c*aqk;}}}return a.map((r,i)=>r[i]).sort((x,y)=>y-x);}
-function matrixText(M){return M.map(r=>"  [ "+r.map(v=>(v<0?"−":" ")+Math.abs(v).toFixed(2)).join("  ")+" ]").join("\n");}
-document.getElementById('matA').textContent=matrixText(A);
-document.getElementById('matB').textContent=matrixText(B)+" \n  columns: Research · Cut · Rewrite · Polish";
-const eig=eigenvaluesSym(A), rho=Math.max(...eig.map(Math.abs));
-document.getElementById('eig').textContent=`eigenvalues λ(A) = ${eig.map(v=>fmt(v,3)).join(", ")}  ·  spectral radius ρ(A)=${fmt(rho,3)} ${rho<1?"< 1 → stable (unclipped map contracts)":"≥ 1 → not contracting"}`;
+<script type="module">
+import {A,B,X0,STEPS,NAMES,MOVES,PRESETS,DEFAULT_U,clip,fmt,fixedPoint,trajectory,matrixText,distance,fmtDist,eigString} from './model.js';
+let u=[...DEFAULT_U];document.getElementById('matA').textContent=matrixText(A);
+document.getElementById('matB').textContent=matrixText(B)+"\n  columns: Research · Cut · Rewrite · Polish";
+document.getElementById('eig').textContent=eigString();
 // sliders
 const sl=document.getElementById('sliders');
 MOVES.forEach((m,i)=>{const d=document.createElement('div');d.className='slider-row';d.innerHTML=`<label for="s${i}"><span>${m}</span><output id="o${i}">${fmt(u[i])}</output></label><input id="s${i}" type="range" min="0" max="1" step="0.01" value="${u[i]}" aria-label="${m}">`;sl.appendChild(d);d.querySelector('input').addEventListener('input',e=>{u[i]=+e.target.value;clearActive();render();});});
@@ -201,8 +191,7 @@ function syncSliders(){u.forEach((v,i)=>{document.getElementById('s'+i).value=v;
 function render(){
  u.forEach((v,i)=>document.getElementById('o'+i).textContent=fmt(v));
  const xs=trajectory(u), xsStar=fixedPoint(u), inBox=xsStar.every(v=>v>=0&&v<=1);
- const dist=Math.hypot(...xs[STEPS].map((v,i)=>v-xsStar[i]));
- document.getElementById('dist').textContent=dist===0?'0':Number(dist.toPrecision(3)).toString();
+ document.getElementById('dist').textContent=fmtDist(distance(u));
  document.getElementById('xread').innerHTML=`x₀ = [${X0.map(v=>fmt(v)).join(", ")}]<br>x₄₀ = [${xs[STEPS].map(v=>fmt(v,3)).join(", ")}]<br>x* = [${xsStar.map(v=>fmt(v,3)).join(", ")}]${inBox?"":" (outside [0,1]⁴ — star clipped to edge)"}<br>u&nbsp; = [${u.map(v=>fmt(v)).join(", ")}]`;
  // portrait
  const W=720,H=520,L=64,R=24,T=24,Bm=56,pw=W-L-R,ph=H-T-Bm;

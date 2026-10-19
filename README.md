@@ -54,3 +54,8 @@ Single static `index.html` (inline CSS/JS, Google Fonts). No external data, no t
 
 ## Fonts
 Playfair Display, EB Garamond, Inter and JetBrains Mono (SIL Open Font License, via Google Fonts) are self-hosted in `fonts/` (latin subset, woff2); no font CDN is contacted. Fallbacks: Georgia/serif, system-ui, monospace.
+
+## Structure and tests
+`model.js` is the single model module (A, B, x0, presets, trajectory, fixed point, eigenvalues, readout formatting). `index.html` imports it; `test.mjs` imports the same file, so the tests run the page's own code (eigenvalues are cross-checked with an independent Jacobi + power-iteration oracle).
+`npm test` = `node test.mjs` (model, wording, fonts, OFL) + `node e2e.mjs` (headless Chrome via puppeteer-core: drives all 4 sliders, keyboard input and the 4 presets, asserts every readout equals model.js, fonts load locally, no console errors or external/failed requests, 390px matrices don't wrap). Set `CHROME=/path/to/chrome` if Chrome isn't at /usr/bin/google-chrome. Run `npm install` first.
+Font licenses: `fonts/OFL-*.txt` (SIL Open Font License 1.1; "Playfair Display" is a Reserved Font Name; files are unmodified Google Fonts latin subsets).
